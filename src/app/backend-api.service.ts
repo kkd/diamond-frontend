@@ -186,7 +186,7 @@ export class ProfileEntryResponse {
   };
   CoinPriceDeSoNanos?: number;
   StakeMultipleBasisPoints?: number;
-  PublicKeyBase58Check?: string;
+  PublicKeyBase58Check: string;
   UsersThatHODL?: any;
   Posts?: PostEntryResponse[];
   IsReserved?: boolean;
@@ -492,6 +492,9 @@ export class BackendApiService {
 
   // Messaging V3 default key name.
   DefaultKey = "default-key";
+
+  // Store whether user has dismissed email notifications in localStorage
+  EmailNotificationsDismissalKey = "emailNotificationsDismissedAt";
 
   // TODO: Wipe all this data when transition is complete
   LegacyUserListKey = "userList";

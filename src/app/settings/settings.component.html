@@ -1,46 +1,49 @@
-<div class="modal-header">
+<div *ngIf="isModal" class="modal-header">
   <div class="modal-header-x" (click)="closeModal()">
     <i-feather name="x"></i-feather>
   </div>
 </div>
 
 <div class="buy-deso__container p-16px">
-  <div class="mint-nft__title">Settings</div>
-  <div class="update-profile__title">{{ environment.node.name }} {{ "update_profile.theme" | transloco }}</div>
-  <select
-    name="theme"
-    id="theme"
-    (change)="selectChangeHandler($event)"
-    style="padding: 6px 12px"
-    class="form-control selector"
-  >
-    <option *ngFor="let theme of themeService.themes" [value]="theme.key" [selected]="theme.key === themeService.theme">
-      {{ theme.name }}
-    </option>
-  </select>
-  <div class="update-profile__title">{{ "update_profile.language" | transloco }}</div>
-  <select
-    name="language"
-    id="language"
-    (change)="selectLanguage($event)"
-    style="padding: 6px 12px"
-    class="form-control selector"
-  >
-    <option value="ja" [selected]="'ja' === selectedLanguage">日本語</option>
-    <option value="en" [selected]="'en' === selectedLanguage">English</option>
-    <option value="nl" [selected]="'nl' === selectedLanguage">Nederlandse</option>
-    <option value="fr" [selected]="'fr' === selectedLanguage">Franse</option>
-  </select>
-  <div class="d-flex align-items-center">
-    <div class="update-profile__title mr-16px">{{ "update_profile.show_price_in_feed" | transloco }}</div>
-    <button
-      class="checkbox-circle mt-12px"
-      [ngClass]="{ checked: globalVars.showPriceOnFeed }"
-      (click)="updateShowPriceInFeed()"
+  <div *ngIf="!onlyShowEmailSettings">
+    <div class="mint-nft__title">Settings</div>
+    <div class="update-profile__title">{{ environment.node.name }} {{ "update_profile.theme" | transloco }}</div>
+    <select
+      name="theme"
+      id="theme"
+      (change)="selectChangeHandler($event)"
+      style="padding: 6px 12px"
+      class="form-control selector"
     >
-      <i-feather name="check"></i-feather>
-    </button>
+      <option *ngFor="let theme of themeService.themes" [value]="theme.key" [selected]="theme.key === themeService.theme">
+        {{ theme.name }}
+      </option>
+    </select>
+    <div class="update-profile__title">{{ "update_profile.language" | transloco }}</div>
+    <select
+      name="language"
+      id="language"
+      (change)="selectLanguage($event)"
+      style="padding: 6px 12px"
+      class="form-control selector"
+    >
+      <option value="ja" [selected]="'ja' === selectedLanguage">日本語</option>
+      <option value="en" [selected]="'en' === selectedLanguage">English</option>
+      <option value="nl" [selected]="'nl' === selectedLanguage">Nederlandse</option>
+      <option value="fr" [selected]="'fr' === selectedLanguage">Franse</option>
+    </select>
+    <div class="d-flex align-items-center">
+      <div class="update-profile__title mr-16px">{{ "update_profile.show_price_in_feed" | transloco }}</div>
+      <button
+        class="checkbox-circle mt-12px"
+        [ngClass]="{ checked: globalVars.showPriceOnFeed }"
+        (click)="updateShowPriceInFeed()"
+      >
+        <i-feather name="check"></i-feather>
+      </button>
+    </div>
   </div>
+
   <form (submit)="onEmailSubmit($event)" *ngIf="showEmailPrompt">
     <label for="email-prompt" class="update-profile__title">
       Enter your email to receive earnings and activity digests
@@ -62,63 +65,6 @@
     <span *ngIf="!this.isValidEmail" class="text-danger">Please enter a valid email address.</span>
   </form>
   <section *ngIf="!!appUser" class="mt-2">
-    <div class="btn-group w-100" dropdown>
-      <button
-        id="button-basic"
-        type="button"
-        class="btn btn-primary dropdown-toggle"
-        aria-controls="dropdown-basic"
-        (click)="toggleEmailDropdown()"
-      >
-        Select engagement emails
-        <span class="caret"></span>
-      </button>
-      <ul
-        id="dropdown-basic"
-        class="dropdown-menu w-100 settings__email-dropdown"
-        role="menu"
-        aria-labelledby="button-basic"
-        [ngStyle]="{ display: this.isSelectEmailsDropdownOpen ? 'block' : 'none' }"
-      >
-        <li role="menuitem">
-          <span class="dropdown-item">
-            <input
-              id="select-all-tx-emails"
-              type="checkbox"
-              [checked]="allTxSettingsSelected"
-              class="w-auto mr-2"
-              (change)="toggleSelectAllTxEmailSettings(true)"
-            />
-            <label for="select-all-tx-emails">Receive all</label>
-          </span>
-        </li>
-        <li role="menuitem">
-          <span class="dropdown-item">
-            <input
-              id="unselect-all-tx-emails"
-              type="checkbox"
-              [checked]="allTxSettingsUnselected"
-              class="w-auto mr-2"
-              (change)="toggleSelectAllTxEmailSettings(false)"
-            />
-            <label for="unselect-all-tx-emails">Receive none</label>
-          </span>
-        </li>
-        <li role="menuitem" *ngFor="let setting of txEmailSettings">
-          <span class="dropdown-item">
-            <input
-              [id]="setting.field"
-              [name]="setting.field"
-              type="checkbox"
-              [checked]="appUser[setting.field]"
-              class="w-auto mr-2"
-              (change)="updateTxEmailSetting($event)"
-            />
-            <label [for]="setting.field">{{ setting.text }}</label>
-          </span>
-        </li>
-      </ul>
-    </div>
     <label for="activity_digest_frequency" class="update-profile__title">Activity digest email frequency?</label>
     <select
       id="activity_digest_frequency"
@@ -151,5 +97,47 @@
         {{ f.text }}
       </option>
     </select>
+    <div class="update-profile__title">Select engagement emails</div>
+    <div class="btn-group w-100">
+      <ul class="w-100 p-0" role="menu" aria-labelledby="button-basic" style="list-style: none">
+        <li role="menuitem">
+          <span class="dropdown-item fc-secondary">
+            <input
+              id="select-all-tx-emails"
+              type="checkbox"
+              [checked]="allTxSettingsSelected"
+              class="w-auto mr-2"
+              (change)="toggleSelectAllTxEmailSettings(true)"
+            />
+            <label for="select-all-tx-emails">Receive all</label>
+          </span>
+        </li>
+        <li role="menuitem">
+          <span class="dropdown-item fc-secondary">
+            <input
+              id="unselect-all-tx-emails"
+              type="checkbox"
+              [checked]="allTxSettingsUnselected"
+              class="w-auto mr-2"
+              (change)="toggleSelectAllTxEmailSettings(false)"
+            />
+            <label for="unselect-all-tx-emails">Receive none</label>
+          </span>
+        </li>
+        <li role="menuitem" *ngFor="let setting of txEmailSettings">
+          <span class="dropdown-item fc-secondary">
+            <input
+              [id]="setting.field"
+              [name]="setting.field"
+              type="checkbox"
+              [checked]="appUser[setting.field]"
+              class="w-auto mr-2"
+              (change)="updateTxEmailSetting($event)"
+            />
+            <label [for]="setting.field">{{ setting.text }}</label>
+          </span>
+        </li>
+      </ul>
+    </div>
   </section>
 </div>
