@@ -148,45 +148,45 @@
     "no_nfts_pending": "現在、保留中のNFTはありません。",
     "no_nfts_pending_yet": "は、まだ保留中のNFTはありません。",
     "no_bids": "まだ入札はありません。",
-    "no_bids_yet": "はプラットフォーム上に存在しますが、まだNFTに入札しいません。",
+    "no_bids_yet": "はプラットフォーム上にいますが、まだNFTに入札していません。",
     "highest": "最高！",
     "serial": "シリアル番号",
     "bid": "入札",
     "cancel": "キャンセル"
   },
   "creator_profile_posts": {
-    "create_fipo": "Create your first post.",
-    "on_platform_no_posts": "is on the platform but hasn't posted yet."
+    "create_fipo": "最初の投稿",
+    "on_platform_no_posts": "はプラットフォーム上にいますが、まだ投稿はありません。"
   },
   "creator_profile_blog_posts": {
-    "create_fipo": "Create your first blog post.",
-    "on_platform_no_posts": "is on the platform but hasn't posted yet."
+    "create_fipo": "最初のブログ投稿",
+    "on_platform_no_posts": "はプラットフォーム上にいますが、まだ投稿はありません。"
   },
   "creator_profile_top_card": {
-    "coin_price": "Coin Price",
-    "message_user": "Message User",
-    "block": "Block",
-    "unblock": "Unblock",
-    "user": "User",
-    "report_user": "Report User",
-    "remove": "Remove",
-    "add": "Add",
-    "wellknown_creator": "User As Well Known Creator",
-    "upcoming_creator": "User As Up And Coming Creator",
-    "edit": "Edit",
-    "buy": "Buy",
-    "followers": "Followers",
-    "following": "Following"
+    "coin_price": "コイン価格",
+    "message_user": "ユーザーへメッセージ",
+    "block": "ブロック",
+    "unblock": "ブロック解除",
+    "user": "ユーザー",
+    "report_user": "ユーザーを報告",
+    "remove": "削除",
+    "add": "追加",
+    "wellknown_creator": "著名なクリエイター",
+    "upcoming_creator": "新進気鋭のクリエイター",
+    "edit": "編集",
+    "buy": "購入",
+    "followers": "フォロワー",
+    "following": "フォロー"
   },
   "creators_leaderboard": {
-    "buy_coin": "Discover Creators",
-    "buy_coin_subtitle": "All creators have a Creator Coin associated with them.",
-    "name": "Name",
-    "price": "Price"
+    "buy_coin": "クリエイターを探す",
+    "buy_coin_subtitle": "すべてのクリエイターには、関連付けられたクリエイターコインがあります。",
+    "name": "名前",
+    "price": "価格"
   },
   "diamonds_pages": {
-    "diamonds_from": "Diamonds from",
-    "diamonds_given_by": "Diamonds Given By"
+    "diamonds_from": "ダイヤモンド送信元",
+    "diamonds_given_by": "ダイヤモンド贈与"
   },
   "direct_to_browser_modal": {
     "tap_ellipsis": "1. Tap elipsis",
