@@ -1,9 +1,11 @@
-import { Component, OnInit, Input, Output, EventEmitter } from "@angular/core";
-import { GlobalVarsService } from "../global-vars.service";
+import { Component, EventEmitter, Input, Output } from "@angular/core";
 import { Router } from "@angular/router";
-import { ProfileEntryResponse } from "../backend-api.service";
-import { TradeCreatorModalComponent } from "../trade-creator-page/trade-creator-modal/trade-creator-modal.component";
 import { BsModalService } from "ngx-bootstrap/modal";
+import { TrackingService } from "src/app/tracking.service";
+import { WelcomeModalComponent } from "src/app/welcome-modal/welcome-modal.component";
+import { ProfileEntryResponse } from "../backend-api.service";
+import { GlobalVarsService } from "../global-vars.service";
+import { TradeCreatorModalComponent } from "../trade-creator-page/trade-creator-modal/trade-creator-modal.component";
 
 @Component({
   selector: "simple-profile-card",
@@ -29,7 +31,12 @@ export class SimpleProfileCardComponent {
   @Output() onboardingFollowCreator = new EventEmitter<boolean>();
   tutorialFollowing = false;
 
-  constructor(public globalVars: GlobalVarsService, private router: Router, private modalService: BsModalService) {}
+  constructor(
+    public globalVars: GlobalVarsService,
+    private router: Router,
+    private modalService: BsModalService,
+    private tracking: TrackingService
+  ) {}
 
   onboardingFollow() {
     this.tutorialFollowing = !this.tutorialFollowing;
@@ -55,7 +62,7 @@ export class SimpleProfileCardComponent {
   }
 
   onBuyClicked() {
-    this.globalVars.logEvent("buy : creator : select");
+    this.tracking.log("buy : creator : select");
     this.router.navigate(
       [
         this.globalVars.RouteNames.TUTORIAL,
@@ -69,7 +76,7 @@ export class SimpleProfileCardComponent {
 
   followCreator(event) {
     this.exitTutorial.emit();
-    this.globalVars.logEvent("buy : creator : select");
+    this.tracking.log("buy : creator : select");
     event.stopPropagation();
     const initialState = {
       username: this.profile.Username,
@@ -90,8 +97,14 @@ export class SimpleProfileCardComponent {
 
   openBuyCreatorCoinModal(event) {
     this.exitTutorial.emit();
-    this.globalVars.logEvent("buy : creator : select");
+    this.tracking.log("buy : creator : select");
     event.stopPropagation();
+
+    if (!this.globalVars.loggedInUser) {
+      this.modalService.show(WelcomeModalComponent);
+      return;
+    }
+
     const initialState = {
       username: this.profile.Username,
       tradeType: this.globalVars.RouteNames.BUY_CREATOR,

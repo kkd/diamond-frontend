@@ -1,8 +1,9 @@
-import { Component, OnInit, Input, Output, EventEmitter, OnChanges } from "@angular/core";
-import { GlobalVarsService } from "../../global-vars.service";
-import { BackendApiService, User } from "../../backend-api.service";
+import { Component, EventEmitter, Input, OnChanges, OnInit, Output } from "@angular/core";
 import { ActivatedRoute, Router } from "@angular/router";
 import * as _ from "lodash";
+import { TrackingService } from "src/app/tracking.service";
+import { BackendApiService } from "../../backend-api.service";
+import { GlobalVarsService } from "../../global-vars.service";
 
 @Component({
   selector: "messages-inbox",
@@ -41,10 +42,9 @@ export class MessagesInboxComponent implements OnInit, OnChanges {
     private globalVars: GlobalVarsService,
     private backendApi: BackendApiService,
     private route: ActivatedRoute,
-    private router: Router
-  ) {
-
-  }
+    private router: Router,
+    private tracking: TrackingService
+  ) {}
 
   initializeRouteParams() {
     // Based on the route path set the tab and update filter/sort params
@@ -54,8 +54,8 @@ export class MessagesInboxComponent implements OnInit, OnChanges {
         params.messagesTab && params.messagesTab in MessagesInboxComponent.QUERYTOTAB
           ? MessagesInboxComponent.QUERYTOTAB[params.messagesTab]
           : storedTab
-            ? storedTab
-            : MessagesInboxComponent.QUERYTOTAB.all;
+          ? storedTab
+          : MessagesInboxComponent.QUERYTOTAB.all;
 
       // Set the default active tab if there's nothing saved in local storage
       if (this.activeTab === null) {
@@ -90,7 +90,7 @@ export class MessagesInboxComponent implements OnInit, OnChanges {
       if (!this.isMobile) {
         this._setSelectedThreadBasedOnDefaultThread();
       }
-    })
+    });
   }
 
   ngOnChanges(changes: any) {
@@ -132,7 +132,7 @@ export class MessagesInboxComponent implements OnInit, OnChanges {
     this.backendApi
       .GetMessages(
         this.globalVars.localNode,
-        this.globalVars.loggedInUser.PublicKeyBase58Check,
+        this.globalVars.loggedInUser?.PublicKeyBase58Check,
         fetchAfterPubKey,
         this.globalVars.messagesPerFetch,
         this.globalVars.messagesRequestsHoldersOnly,
@@ -253,15 +253,15 @@ export class MessagesInboxComponent implements OnInit, OnChanges {
 
     // Send an update back to the server noting that we want to mark all threads read.
     this.backendApi
-      .MarkAllMessagesRead(this.globalVars.localNode, this.globalVars.loggedInUser.PublicKeyBase58Check)
+      .MarkAllMessagesRead(this.globalVars.localNode, this.globalVars.loggedInUser?.PublicKeyBase58Check)
       .subscribe(
         () => {
-          this.globalVars.logEvent("user : all-message-read");
+          this.tracking.log("user : all-message-read");
         },
         (err) => {
           console.log(err);
           const parsedError = this.backendApi.stringifyError(err);
-          this.globalVars.logEvent("user : all-message-read : error", { parsedError });
+          this.tracking.log("user : all-message-read : error", { parsedError });
           this.globalVars._alertError(parsedError);
         }
       );
@@ -332,17 +332,17 @@ export class MessagesInboxComponent implements OnInit, OnChanges {
       this.backendApi
         .MarkContactMessagesRead(
           this.globalVars.localNode,
-          this.globalVars.loggedInUser.PublicKeyBase58Check,
+          this.globalVars.loggedInUser?.PublicKeyBase58Check,
           this.selectedThread.PublicKeyBase58Check
         )
         .subscribe(
           () => {
-            this.globalVars.logEvent("user : message-read");
+            this.tracking.log("user : message-read");
           },
           (err) => {
             console.log(err);
             const parsedError = this.backendApi.stringifyError(err);
-            this.globalVars.logEvent("user : message-read : error", { parsedError });
+            this.tracking.log("user : message-read : error", { parsedError });
             this.globalVars._alertError(parsedError);
           }
         );

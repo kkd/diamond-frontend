@@ -15,6 +15,8 @@ import * as _ from "lodash";
 import { filter } from "lodash";
 import { BsModalService } from "ngx-bootstrap/modal";
 import { ToastrService } from "ngx-toastr";
+import { TrackingService } from "src/app/tracking.service";
+import { WelcomeModalComponent } from "src/app/welcome-modal/welcome-modal.component";
 import { environment } from "../../../environments/environment";
 import { SwalHelper } from "../../../lib/helpers/swal-helper";
 import { EmbedUrlParserService } from "../../../lib/services/embed-url-parser-service/embed-url-parser-service";
@@ -33,6 +35,21 @@ import { TradeCreatorModalComponent } from "../../trade-creator-page/trade-creat
 import { TransferNftAcceptModalComponent } from "../../transfer-nft-accept/transfer-nft-accept-modal/transfer-nft-accept-modal.component";
 import { FeedPostIconRowComponent } from "../feed-post-icon-row/feed-post-icon-row.component";
 import { FeedPostImageModalComponent } from "../feed-post-image-modal/feed-post-image-modal.component";
+
+/**
+ * NOTE: This was previously handled by updating the node list in the core repo,
+ * but that approach was deprecated and there is not currently an interim
+ * solution. This is a temporary solution for the setu team and should not be
+ * used by other teams.  Once a new solution is available we should remove this
+ * and migrate to whatever that ends up being.
+ * @deprecated
+ */
+const DEPRECATED_CUSTOM_ATTRIBUTIONS = {
+  setu_deso: {
+    text: "Setu Deso",
+    link: "https://web3setu.com",
+  },
+};
 
 @Component({
   selector: "feed-post",
@@ -95,7 +112,8 @@ export class FeedPostComponent implements OnInit {
     private toastr: ToastrService,
     private followService: FollowService,
     private translocoService: TranslocoService,
-    private streamService: CloudflareStreamService
+    private streamService: CloudflareStreamService,
+    private tracking: TrackingService
   ) {
     // Change detection on posts is a very expensive process so we detach and perform
     // the computation manually with ref.detectChanges().
@@ -334,14 +352,14 @@ export class FeedPostComponent implements OnInit {
       // to the corresponding profile page.
       const attributionText = lines[lines.length - 1].slice(attributionSearchText.length);
       if (!this.attribution) {
-        this.attribution = {
+        this.attribution = DEPRECATED_CUSTOM_ATTRIBUTIONS[attributionText] ?? {
           link: `/u/${attributionText}`,
           text: attributionText,
         };
       }
     }
 
-    if (!this.showRestOfPost && this.hasReadMoreRollup && postBody > GlobalVarsService.MAX_POST_LENGTH) {
+    if (!this.showRestOfPost && this.hasReadMoreRollup && postBody.length > GlobalVarsService.MAX_POST_LENGTH) {
       // NOTE: We first spread the string into an array since this will account
       // for unicode multi-codepoint characters like emojis. Just using
       // substring will potentially break a string in the middle of a
@@ -389,6 +407,12 @@ export class FeedPostComponent implements OnInit {
 
   openBuyCreatorCoinModal(event, username: string) {
     event.stopPropagation();
+
+    if (!this.globalVars.loggedInUser) {
+      this.modalService.show(WelcomeModalComponent);
+      return;
+    }
+
     const initialState = { username, tradeType: this.globalVars.RouteNames.BUY_CREATOR };
     this.modalService.show(TradeCreatorModalComponent, {
       class: "modal-dialog-centered buy-deso-modal",
@@ -547,7 +571,7 @@ export class FeedPostComponent implements OnInit {
         this.backendApi
           .SubmitPost(
             this.globalVars.localNode,
-            this.globalVars.loggedInUser.PublicKeyBase58Check,
+            this.globalVars.loggedInUser?.PublicKeyBase58Check,
             this._post.PostHashHex /*PostHashHexToModify*/,
             "" /*ParentPostHashHex*/,
             "" /*Title*/,
@@ -560,13 +584,13 @@ export class FeedPostComponent implements OnInit {
           )
           .subscribe(
             (response) => {
-              this.globalVars.logEvent("post : hide");
+              this.tracking.log("post : hide");
               this.postDeleted.emit(response.PostEntryResponse);
             },
             (err) => {
               console.error(err);
               const parsedError = this.backendApi.parsePostError(err);
-              this.globalVars.logEvent("post : hide : error", { parsedError });
+              this.tracking.log("post : hide : error", { parsedError });
               this.globalVars._alertError(parsedError);
             }
           );
@@ -590,19 +614,19 @@ export class FeedPostComponent implements OnInit {
         this.backendApi
           .BlockPublicKey(
             this.globalVars.localNode,
-            this.globalVars.loggedInUser.PublicKeyBase58Check,
+            this.globalVars.loggedInUser?.PublicKeyBase58Check,
             this.post.PosterPublicKeyBase58Check
           )
           .subscribe(
             () => {
-              this.globalVars.logEvent("user : block");
+              this.tracking.log("user : block");
               this.globalVars.loggedInUser.BlockedPubKeys[this.post.PosterPublicKeyBase58Check] = {};
               this.userBlocked.emit(this.post.PosterPublicKeyBase58Check);
             },
             (err) => {
               console.error(err);
               const parsedError = this.backendApi.stringifyError(err);
-              this.globalVars.logEvent("user : block : error", { parsedError });
+              this.tracking.log("user : block : error", { parsedError });
               this.globalVars._alertError(parsedError);
             }
           );
@@ -662,7 +686,7 @@ export class FeedPostComponent implements OnInit {
     this.backendApi
       .AdminUpdateGlobalFeed(
         this.globalVars.localNode,
-        this.globalVars.loggedInUser.PublicKeyBase58Check,
+        this.globalVars.loggedInUser?.PublicKeyBase58Check,
         postHashHex,
         inGlobalFeed /*RemoveFromGlobalFeed*/
       )
@@ -670,7 +694,7 @@ export class FeedPostComponent implements OnInit {
         (res) => {
           this.post.InGlobalFeed = !this.post.InGlobalFeed;
           this.post.InHotFeed = !this.post.InHotFeed;
-          this.globalVars.logEvent("admin: add-post-to-global-feed", {
+          this.tracking.log("admin: add-post-to-global-feed", {
             postHashHex,
             userPublicKeyBase58Check: this.globalVars.loggedInUser?.PublicKeyBase58Check,
             username: this.globalVars.loggedInUser?.ProfileEntryResponse?.Username,
@@ -697,14 +721,14 @@ export class FeedPostComponent implements OnInit {
     this.backendApi
       .AdminPinPost(
         this.globalVars.localNode,
-        this.globalVars.loggedInUser.PublicKeyBase58Check,
+        this.globalVars.loggedInUser?.PublicKeyBase58Check,
         postHashHex,
         isPostPinned
       )
       .subscribe(
         (res) => {
           this._post.IsPinned = isPostPinned;
-          this.globalVars.logEvent("admin: pin-post-to-global-feed", {
+          this.tracking.log("admin: pin-post-to-global-feed", {
             postHashHex,
             userPublicKeyBase58Check: this.globalVars.loggedInUser?.PublicKeyBase58Check,
             username: this.globalVars.loggedInUser?.ProfileEntryResponse?.Username,
@@ -870,7 +894,7 @@ export class FeedPostComponent implements OnInit {
     event.stopPropagation();
     const transferNFTEntryResponses = _.filter(this.nftEntryResponses, (nftEntryResponse: NFTEntryResponse) => {
       return (
-        nftEntryResponse.OwnerPublicKeyBase58Check === this.globalVars.loggedInUser.PublicKeyBase58Check &&
+        nftEntryResponse.OwnerPublicKeyBase58Check === this.globalVars.loggedInUser?.PublicKeyBase58Check &&
         nftEntryResponse.IsPending
       );
     });

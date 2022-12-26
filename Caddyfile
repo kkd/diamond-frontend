@@ -33,11 +33,9 @@ header @html Content-Security-Policy "
   connect-src 'self'
     node.deso.org
     amp.deso.org
-    bithunt.deso.org
     pulse.deso.org
     bitclout.com:*
     api.bitclout.com
-    bithunt.bitclout.com
     pulse.bitclout.com
     https://altumbase.com
     https://openprosperapi.xyz
@@ -58,7 +56,8 @@ header @html Content-Security-Policy "
     api.sendwyre.com
     https://videodelivery.net
     https://upload.videodelivery.net
-    https://web3setu.co.in;
+    https://web3setu.co.in
+    https://diamondapp.com;
   script-src 'self'
     https://kit.fontawesome.com/070ca4195b.js
     https://ka-f.fontawesome.com/;

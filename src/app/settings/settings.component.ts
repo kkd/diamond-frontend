@@ -1,16 +1,17 @@
 // @ts-strict
 import { Component, Input, OnInit } from "@angular/core";
 import { Title } from "@angular/platform-browser";
+import { ActivatedRoute } from "@angular/router";
 import { TranslocoService } from "@ngneat/transloco";
 import { BsModalService } from "ngx-bootstrap/modal";
 import { forkJoin, of } from "rxjs";
 import { catchError, switchMap } from "rxjs/operators";
 import { ApiInternalService, AppUser } from "src/app/api-internal.service";
 import { environment } from "src/environments/environment";
+import { getUTCOffset } from "../../lib/helpers/date-helpers";
 import { BackendApiService } from "../backend-api.service";
 import { GlobalVarsService } from "../global-vars.service";
 import { ThemeService } from "../theme/theme.service";
-import { ActivatedRoute, Router } from "@angular/router";
 
 @Component({
   selector: "settings",
@@ -82,7 +83,6 @@ export class SettingsComponent implements OnInit {
       if (queryParams?.publicKey) {
         this.userPublicKeyBase58Check = queryParams.publicKey;
       }
-      this.initializeAppUser();
     });
   }
 
@@ -100,8 +100,13 @@ export class SettingsComponent implements OnInit {
           throw err;
         })
       );
+      const utcOffset = getUTCOffset();
       if (!!loggedInUser?.ProfileEntryResponse) {
-        const getUserMetadataObs = this.backendApi.GetUserGlobalMetadata(this.globalVars.localNode, userPublicKey);
+        const getUserMetadataObs = this.backendApi.GetUserGlobalMetadata(this.globalVars.localNode, userPublicKey).pipe(
+          catchError((err) => {
+            return of(null);
+          })
+        );
         forkJoin([getAppUserObs, getUserMetadataObs])
           .pipe(
             switchMap(([appUser, userMetadata]) => {
@@ -113,9 +118,11 @@ export class SettingsComponent implements OnInit {
                   // but somehow we *DO* have their email address, we create an app
                   // user record with default email settings.
                   return this.apiInternal.createAppUser(
-                    this.globalVars.loggedInUser.PublicKeyBase58Check,
+                    this.globalVars.loggedInUser?.PublicKeyBase58Check,
                     this.globalVars.loggedInUser.ProfileEntryResponse.Username,
-                    this.globalVars.lastSeenNotificationIdx
+                    this.globalVars.lastSeenNotificationIdx,
+                    utcOffset,
+                    20 - utcOffset
                   );
                 }
 
@@ -142,6 +149,9 @@ export class SettingsComponent implements OnInit {
   ngOnInit() {
     this.titleService.setTitle(`Settings - ${environment.node.name}`);
     this.selectedLanguage = this.translocoService.getActiveLang();
+    this.globalVars.updateEverything().add(() => {
+      this.initializeAppUser();
+    });
   }
 
   closeModal() {
@@ -249,19 +259,22 @@ export class SettingsComponent implements OnInit {
     }
 
     this.isSavingEmail = true;
+    const utcOffset = getUTCOffset();
     this.backendApi
       .UpdateUserGlobalMetadata(
         this.globalVars.localNode,
-        this.globalVars.loggedInUser.PublicKeyBase58Check /*UpdaterPublicKeyBase58Check*/,
+        this.globalVars.loggedInUser?.PublicKeyBase58Check /*UpdaterPublicKeyBase58Check*/,
         this.emailAddress /*EmailAddress*/,
         null /*MessageReadStateUpdatesByContact*/
       )
       .pipe(
         switchMap((res) => {
           return this.apiInternal.createAppUser(
-            this.globalVars.loggedInUser.PublicKeyBase58Check,
+            this.globalVars.loggedInUser?.PublicKeyBase58Check,
             this.globalVars.loggedInUser.ProfileEntryResponse.Username,
-            this.globalVars.lastSeenNotificationIdx
+            this.globalVars.lastSeenNotificationIdx,
+            utcOffset,
+            20 - utcOffset
           );
         })
       )

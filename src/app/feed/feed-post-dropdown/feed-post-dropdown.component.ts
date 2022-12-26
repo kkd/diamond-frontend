@@ -7,6 +7,7 @@ import { BsModalService } from "ngx-bootstrap/modal";
 import { ToastrService } from "ngx-toastr";
 import { FeedCreatePostModalComponent } from "src/app/feed/feed-create-post-modal/feed-create-post-modal.component";
 import RouteNamesService from "src/app/route-names.service";
+import { TrackingService } from "src/app/tracking.service";
 import { environment } from "../../../environments/environment";
 import { SwalHelper } from "../../../lib/helpers/swal-helper";
 import { FollowService } from "../../../lib/services/follow/follow.service";
@@ -49,7 +50,8 @@ export class FeedPostDropdownComponent implements OnInit {
     private platformLocation: PlatformLocation,
     public ref: ChangeDetectorRef,
     private followService: FollowService,
-    private toastr: ToastrService
+    private toastr: ToastrService,
+    private tracking: TrackingService
   ) {
     if (!!navigator.share) {
       this.showSharePost = true;
@@ -63,7 +65,7 @@ export class FeedPostDropdownComponent implements OnInit {
   }
 
   reportPost(): void {
-    this.globalVars.logEvent("post : report-content");
+    this.tracking.log("post : report-content");
     window.open(
       `https://desoreporting.aidaform.com/content?ReporterPublicKey=${this.globalVars.loggedInUser?.PublicKeyBase58Check}&PostHash=${this.post.PostHashHex}&ReportedAccountPublicKey=${this.post?.PosterPublicKeyBase58Check}&ReportedAccountUsername=${this.post?.ProfileEntryResponse?.Username}`
     );
@@ -77,7 +79,7 @@ export class FeedPostDropdownComponent implements OnInit {
   dropNFT() {
     // Get the latest drop so that we can update it.
     this.backendApi
-      .AdminGetNFTDrop(this.globalVars.localNode, this.globalVars.loggedInUser.PublicKeyBase58Check, -1 /*DropNumber*/)
+      .AdminGetNFTDrop(this.globalVars.localNode, this.globalVars.loggedInUser?.PublicKeyBase58Check, -1 /*DropNumber*/)
       .subscribe(
         (res: any) => {
           if (res.DropEntry.DropTstampNanos == 0) {
@@ -122,7 +124,7 @@ export class FeedPostDropdownComponent implements OnInit {
     this.backendApi
       .AdminUpdateNFTDrop(
         this.globalVars.localNode,
-        this.globalVars.loggedInUser.PublicKeyBase58Check,
+        this.globalVars.loggedInUser?.PublicKeyBase58Check,
         latestDrop.DropNumber,
         latestDrop.DropTstampNanos,
         latestDrop.IsActive /*IsActive*/,
@@ -157,9 +159,10 @@ export class FeedPostDropdownComponent implements OnInit {
     }
 
     const loggedInUserPostedThis =
-      this.globalVars.loggedInUser.PublicKeyBase58Check === this.post.PosterPublicKeyBase58Check;
+      this.globalVars.loggedInUser?.PublicKeyBase58Check === this.post.PosterPublicKeyBase58Check;
     const loggedInUserIsParamUpdater =
-      this.globalVars.paramUpdaters && this.globalVars.paramUpdaters[this.globalVars.loggedInUser.PublicKeyBase58Check];
+      this.globalVars.paramUpdaters &&
+      this.globalVars.paramUpdaters[this.globalVars.loggedInUser?.PublicKeyBase58Check];
 
     return loggedInUserPostedThis || loggedInUserIsParamUpdater;
   }
@@ -300,7 +303,7 @@ export class FeedPostDropdownComponent implements OnInit {
       .UpdateProfile(
         this.globalVars.localNode,
         this.globalVars.localNode,
-        this.globalVars.loggedInUser.PublicKeyBase58Check,
+        this.globalVars.loggedInUser?.PublicKeyBase58Check,
         "",
         "",
         "",
@@ -333,7 +336,7 @@ export class FeedPostDropdownComponent implements OnInit {
     this.backendApi
       .SubmitPost(
         this.globalVars.localNode,
-        this.globalVars.loggedInUser.PublicKeyBase58Check,
+        this.globalVars.loggedInUser?.PublicKeyBase58Check,
         this.post.PostHashHex /*PostHashHexToModify*/,
         "" /*ParentPostHashHex*/,
         "" /*Title*/,
@@ -378,7 +381,7 @@ export class FeedPostDropdownComponent implements OnInit {
   }
 
   copyPostLinkToClipboard(event) {
-    this.globalVars.logEvent("post : share");
+    this.tracking.log("post : share");
 
     // Prevent the post from navigating.
     event.stopPropagation();
@@ -389,7 +392,7 @@ export class FeedPostDropdownComponent implements OnInit {
   }
 
   sharePostUrl(event): void {
-    this.globalVars.logEvent("post : webapishare");
+    this.tracking.log("post : webapishare");
 
     // Prevent the post from navigating.
     event.stopPropagation();
@@ -403,7 +406,7 @@ export class FeedPostDropdownComponent implements OnInit {
 
   editPost(event) {
     event.preventDefault();
-    this.globalVars.logEvent("post : edit");
+    this.tracking.log("post : edit");
     if (this.post.PostExtraData?.BlogDeltaRtfFormat) {
       this.router.navigate(["/" + this.globalVars.RouteNames.EDIT_LONG_POST + "/" + this.post.PostHashHex], {
         queryParamsHandling: "merge",
@@ -466,7 +469,7 @@ export class FeedPostDropdownComponent implements OnInit {
       .UpdateProfile(
         environment.verificationEndpointHostname,
         this.globalVars.localNode,
-        this.globalVars.loggedInUser.PublicKeyBase58Check,
+        this.globalVars.loggedInUser?.PublicKeyBase58Check,
         "",
         "",
         "",

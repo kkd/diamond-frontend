@@ -5,6 +5,8 @@ import { TranslocoService } from "@ngneat/transloco";
 import { includes, isNil, round, set } from "lodash";
 import { BsModalService } from "ngx-bootstrap/modal";
 import { PopoverDirective } from "ngx-bootstrap/popover";
+import { TrackingService } from "src/app/tracking.service";
+import { WelcomeModalComponent } from "src/app/welcome-modal/welcome-modal.component";
 import { SwalHelper } from "../../../lib/helpers/swal-helper";
 import { SharedDialogs } from "../../../lib/shared-dialogs";
 import { BackendApiService, PostEntryResponse } from "../../backend-api.service";
@@ -80,7 +82,8 @@ export class FeedPostIconRowComponent {
     private platformLocation: PlatformLocation,
     private ref: ChangeDetectorRef,
     private modalService: BsModalService,
-    private translocoService: TranslocoService
+    private translocoService: TranslocoService,
+    private tracking: TrackingService
   ) {}
 
   diamondDraggedText() {
@@ -174,28 +177,8 @@ export class FeedPostIconRowComponent {
   }
 
   _preventNonLoggedInUserActions(action: string) {
-    this.globalVars.logEvent(`alert : ${action} : account`);
-
-    return SwalHelper.fire({
-      target: this.globalVars.getTargetComponentSelector(),
-      icon: "info",
-      title: `Create an account to ${action}`,
-      html: `It's totally anonymous and takes under a minute`,
-      showCancelButton: true,
-      showConfirmButton: true,
-      focusConfirm: true,
-      customClass: {
-        confirmButton: "btn btn-light",
-        cancelButton: "btn btn-light no",
-      },
-      confirmButtonText: "Create an account",
-      cancelButtonText: "Nevermind",
-      reverseButtons: true,
-    }).then((res: any) => {
-      if (res.isConfirmed) {
-        this.globalVars.launchSignupFlow();
-      }
-    });
+    this.tracking.log(`alert : ${action} : account`);
+    this.modalService.show(WelcomeModalComponent);
   }
 
   userHasReposted(): boolean {
@@ -210,10 +193,10 @@ export class FeedPostIconRowComponent {
     event.stopPropagation();
 
     // If the user isn't logged in, alert them.
-    if (this.globalVars.loggedInUser == null) {
+    if (!this.globalVars.loggedInUser) {
       return this._preventNonLoggedInUserActions("repost");
     } else if (this.globalVars && !this.globalVars.doesLoggedInUserHaveProfile()) {
-      this.globalVars.logEvent("alert : repost : profile");
+      this.tracking.log("alert : repost : profile");
       SharedDialogs.showCreateProfileToPostDialog(this.router);
       return;
     }
@@ -226,7 +209,7 @@ export class FeedPostIconRowComponent {
     this.backendApi
       .SubmitPost(
         this.globalVars.localNode,
-        this.globalVars.loggedInUser.PublicKeyBase58Check,
+        this.globalVars.loggedInUser?.PublicKeyBase58Check,
         this.postContent.PostEntryReaderState.RepostPostHashHex || "" /*PostHashHexToModify*/,
         "" /*ParentPostHashHex*/,
         "" /*Title*/,
@@ -240,7 +223,7 @@ export class FeedPostIconRowComponent {
       )
       .subscribe(
         (response) => {
-          this.globalVars.logEvent("post : repost");
+          this.tracking.log("post : repost");
           // Only set the RepostPostHashHex if this is the first time a user is reposting a post.
           if (!this.postContent.PostEntryReaderState.RepostPostHashHex) {
             this.postContent.PostEntryReaderState.RepostPostHashHex = response.PostHashHex;
@@ -254,7 +237,7 @@ export class FeedPostIconRowComponent {
           console.error(err);
           this.sendingRepostRequest = false;
           const parsedError = this.backendApi.parsePostError(err);
-          this.globalVars.logEvent("post : repost : error", { parsedError });
+          this.tracking.log("post : repost : error", { parsedError });
           this.globalVars._alertError(parsedError);
           this.ref.detectChanges();
         }
@@ -278,7 +261,7 @@ export class FeedPostIconRowComponent {
     this.backendApi
       .SubmitPost(
         this.globalVars.localNode,
-        this.globalVars.loggedInUser.PublicKeyBase58Check,
+        this.globalVars.loggedInUser?.PublicKeyBase58Check,
         this.postContent.PostEntryReaderState.RepostPostHashHex || "" /*PostHashHexToModify*/,
         "" /*ParentPostHashHex*/,
         "" /*Title*/,
@@ -292,7 +275,7 @@ export class FeedPostIconRowComponent {
       )
       .subscribe(
         (response) => {
-          this.globalVars.logEvent("post : unrepost");
+          this.tracking.log("post : unrepost");
           this.postContent.RepostCount--;
           this.postContent.PostEntryReaderState.RepostedByReader = false;
           this.sendingRepostRequest = false;
@@ -302,7 +285,7 @@ export class FeedPostIconRowComponent {
           console.error(err);
           this.sendingRepostRequest = false;
           const parsedError = this.backendApi.parsePostError(err);
-          this.globalVars.logEvent("post : unrepost : error", { parsedError });
+          this.tracking.log("post : unrepost : error", { parsedError });
           this.globalVars._alertError(parsedError);
           this.ref.detectChanges();
         }
@@ -344,17 +327,17 @@ export class FeedPostIconRowComponent {
     this.backendApi
       .CreateLike(
         this.globalVars.localNode,
-        this.globalVars.loggedInUser.PublicKeyBase58Check,
+        this.globalVars.loggedInUser?.PublicKeyBase58Check,
         this.postContent.PostHashHex,
         isUnlike,
         this.globalVars.feeRateDeSoPerKB * 1e9
       )
       .subscribe(
         (res) => {
-          this.globalVars.logEvent(`post : ${isUnlike ? "unlike" : "like"}`);
+          this.tracking.log(`post : ${isUnlike ? "unlike" : "like"}`);
         },
         (err) => {
-          this.globalVars.logEvent(`post : ${isUnlike ? "unlike" : "like"} : error`);
+          this.tracking.log(`post : ${isUnlike ? "unlike" : "like"} : error`);
           console.error(err);
         }
       );
@@ -371,12 +354,10 @@ export class FeedPostIconRowComponent {
     }
 
     if (!this.globalVars.loggedInUser) {
-      // Check if the user has an account.
-      this.globalVars.logEvent("alert : reply : account");
-      SharedDialogs.showCreateAccountToPostDialog(this.globalVars);
+      this.modalService.show(WelcomeModalComponent);
     } else if (!this.globalVars.doesLoggedInUserHaveProfile()) {
       // Check if the user has a profile.
-      this.globalVars.logEvent("alert : reply : profile");
+      this.tracking.log("alert : reply : profile");
       SharedDialogs.showCreateProfileToPostDialog(this.router);
     } else {
       const initialState = {
@@ -396,7 +377,7 @@ export class FeedPostIconRowComponent {
   }
 
   copyPostLinkToClipboard(event) {
-    this.globalVars.logEvent("post : share");
+    this.tracking.log("post : share");
 
     // Prevent the post from navigating.
     event.stopPropagation();
@@ -414,7 +395,7 @@ export class FeedPostIconRowComponent {
     if (this.inTutorial) {
       return;
     }
-    this.globalVars.logEvent("post : share");
+    this.tracking.log("post : share");
 
     // Prevent the post from navigating.
     event.stopPropagation();
@@ -468,7 +449,7 @@ export class FeedPostIconRowComponent {
     return this.backendApi
       .SendDiamonds(
         this.globalVars.localNode,
-        this.globalVars.loggedInUser.PublicKeyBase58Check,
+        this.globalVars.loggedInUser?.PublicKeyBase58Check,
         this.postContent.PosterPublicKeyBase58Check,
         this.postContent.PostHashHex,
         diamonds,
@@ -480,8 +461,8 @@ export class FeedPostIconRowComponent {
         (res) => {
           this.sendingDiamonds = false;
           this.diamondSent.emit();
-          this.globalVars.logEvent("diamond: send", {
-            SenderPublicKeyBase58Check: this.globalVars.loggedInUser.PublicKeyBase58Check,
+          this.tracking.log("diamond: send", {
+            SenderPublicKeyBase58Check: this.globalVars.loggedInUser?.PublicKeyBase58Check,
             ReceiverPublicKeyBase58Check: this.postContent.PosterPublicKeyBase58Check,
             DiamondPostHashHex: this.postContent.PostHashHex,
             DiamondLevel: diamonds,
@@ -502,7 +483,7 @@ export class FeedPostIconRowComponent {
           }
           this.sendingDiamonds = false;
           const parsedError = this.backendApi.parseProfileError(err);
-          this.globalVars.logEvent("diamonds: send: error", { parsedError });
+          this.tracking.log("diamonds: send: error", { parsedError });
           this.globalVars._alertError(parsedError);
         }
       );
@@ -522,7 +503,7 @@ export class FeedPostIconRowComponent {
     // Hit the Get Single Post endpoint with specific parameters
     let readerPubKey = "";
     if (this.globalVars.loggedInUser) {
-      readerPubKey = this.globalVars.loggedInUser.PublicKeyBase58Check;
+      readerPubKey = this.globalVars.loggedInUser?.PublicKeyBase58Check;
     }
     return this.backendApi.GetSinglePost(
       this.globalVars.localNode,
@@ -599,8 +580,8 @@ export class FeedPostIconRowComponent {
   }
 
   async onDiamondSelected(event: any, index: number): Promise<void> {
-    if (!this.globalVars.loggedInUser?.PublicKeyBase58Check) {
-      this.globalVars._alertError("Must be logged in to send diamonds");
+    if (!this.globalVars.loggedInUser) {
+      this.modalService.show(WelcomeModalComponent);
       return;
     }
     // Disable diamond selection if diamonds are being sent

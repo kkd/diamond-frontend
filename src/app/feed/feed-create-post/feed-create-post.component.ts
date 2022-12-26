@@ -14,6 +14,10 @@ import {
 import { ActivatedRoute, Router } from "@angular/router";
 import { TranslocoService } from "@ngneat/transloco";
 import * as _ from "lodash";
+import { BsModalRef, BsModalService } from "ngx-bootstrap/modal";
+import { GlobalVarsService } from "src/app/global-vars.service";
+import { TrackingService } from "src/app/tracking.service";
+import { WelcomeModalComponent } from "src/app/welcome-modal/welcome-modal.component";
 import * as tus from "tus-js-client";
 import { environment } from "../../../environments/environment";
 import { EmbedUrlParserService } from "../../../lib/services/embed-url-parser-service/embed-url-parser-service";
@@ -21,7 +25,6 @@ import { Mentionify } from "../../../lib/services/mention-autofill/mentionify";
 import { CloudflareStreamService } from "../../../lib/services/stream/cloudflare-stream-service";
 import { SharedDialogs } from "../../../lib/shared-dialogs";
 import { BackendApiService, BackendRoutes, PostEntryResponse, ProfileEntryResponse } from "../../backend-api.service";
-import { GlobalVarsService } from "../../global-vars.service";
 import Timer = NodeJS.Timer;
 
 const RANDOM_MOVIE_QUOTES = [
@@ -127,6 +130,7 @@ export class FeedCreatePostComponent implements OnInit {
   @Input() inModal = false;
   @Input() onCreateBlog?: () => void;
   @Input() postToEdit?: PostEntryResponse;
+  @Input() modalRef?: BsModalRef;
   @Output() postUpdated = new EventEmitter<boolean>();
   @Output() postCreated = new EventEmitter<PostEntryResponse>();
 
@@ -141,7 +145,9 @@ export class FeedCreatePostComponent implements OnInit {
     private changeRef: ChangeDetectorRef,
     private appData: GlobalVarsService,
     private streamService: CloudflareStreamService,
-    private translocoService: TranslocoService
+    private translocoService: TranslocoService,
+    private modalService: BsModalService,
+    private tracking: TrackingService
   ) {
     this.globalVars = appData;
   }
@@ -159,7 +165,7 @@ export class FeedCreatePostComponent implements OnInit {
         "" /*Description*/,
         "influencer_coin_price" /*Order by*/,
         5 /*NumToFetch*/,
-        this.globalVars.loggedInUser.PublicKeyBase58Check /*ReaderPublicKeyBase58Check*/,
+        this.globalVars.loggedInUser?.PublicKeyBase58Check /*ReaderPublicKeyBase58Check*/,
         "" /*ModerationType*/,
         false /*FetchUsersThatHODL*/,
         false /*AddGlobalFeedBool*/
@@ -315,7 +321,7 @@ export class FeedCreatePostComponent implements OnInit {
     this.backendApi
       .SubmitPost(
         this.globalVars.localNode,
-        this.globalVars.loggedInUser.PublicKeyBase58Check,
+        this.globalVars.loggedInUser?.PublicKeyBase58Check,
         post.editPostHashHex /*PostHashHexToModify*/,
         this.isReply ? this.parentPost?.PostHashHex ?? "" : parentPost?.PostHashHex ?? "" /*ParentPostHashHex*/,
         "" /*Title*/,
@@ -331,7 +337,7 @@ export class FeedCreatePostComponent implements OnInit {
       )
       .toPromise()
       .then((response) => {
-        this.globalVars.logEvent(`post : ${postType}`);
+        this.tracking.log(`post : ${postType}`);
 
         this.submittingPost = false;
 
@@ -375,7 +381,7 @@ export class FeedCreatePostComponent implements OnInit {
       .catch((err) => {
         const parsedError = this.backendApi.parsePostError(err);
         this.globalVars._alertError(parsedError);
-        this.globalVars.logEvent(`post : ${postType} : error`, { parsedError });
+        this.tracking.log(`post : ${postType} : error`, { parsedError });
         this.submittingPost = false;
 
         this.changeRef.detectChanges();
@@ -389,14 +395,16 @@ export class FeedCreatePostComponent implements OnInit {
   _createPost() {
     // Check if the user has an account.
     if (!this.globalVars?.loggedInUser) {
-      this.globalVars.logEvent("alert : post : account");
-      SharedDialogs.showCreateAccountToPostDialog(this.globalVars);
+      this.modalRef?.hide();
+      this.tracking.log("alert : post : account");
+      this.modalService.show(WelcomeModalComponent);
       return;
     }
 
     // Check if the user has a profile.
     if (!this.globalVars?.doesLoggedInUserHaveProfile()) {
-      this.globalVars.logEvent("alert : post : profile");
+      this.modalRef?.hide();
+      this.tracking.log("alert : post : profile");
       SharedDialogs.showCreateProfileToPostDialog(this.router);
       return;
     }
@@ -442,7 +450,7 @@ export class FeedCreatePostComponent implements OnInit {
       return;
     }
     return this.backendApi
-      .UploadImage(environment.uploadImageHostname, this.globalVars.loggedInUser.PublicKeyBase58Check, file)
+      .UploadImage(environment.uploadImageHostname, this.globalVars.loggedInUser?.PublicKeyBase58Check, file)
       .toPromise()
       .then((res) => {
         this.currentPostModel.postImageSrc = res.ImageURL;
@@ -573,8 +581,14 @@ export class FeedCreatePostComponent implements OnInit {
     this.postModels.splice(index, 1);
   }
 
-  onNavigateToCreateBlog() {
+  onNavigateToCreateBlog(ev: Event) {
     this.onCreateBlog?.();
+    if (!this.globalVars.loggedInUser) {
+      ev.preventDefault();
+      this.modalService.show(WelcomeModalComponent);
+    } else {
+      this.router.navigate(["/" + this.globalVars.RouteNames.CREATE_LONG_POST]);
+    }
   }
 
   private autoFocusTextArea() {

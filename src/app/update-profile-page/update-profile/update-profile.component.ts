@@ -5,14 +5,16 @@ import * as introJs from "intro.js/intro.js";
 import { isNil } from "lodash";
 import { BsModalService } from "ngx-bootstrap/modal";
 import { forkJoin, Observable, of } from "rxjs";
-import { catchError, switchMap } from "rxjs/operators";
+import { catchError, first, switchMap } from "rxjs/operators";
 import {
   ApiInternalService,
   AppUser,
   NEW_APP_USER_DEFAULTS,
-  SUBSCRIBED_APP_USER_DEFAULTS
+  SUBSCRIBED_APP_USER_DEFAULTS,
 } from "src/app/api-internal.service";
+import { TrackingService } from "src/app/tracking.service";
 import { environment } from "src/environments/environment";
+import { getUTCOffset } from "../../../lib/helpers/date-helpers";
 import { SwalHelper } from "../../../lib/helpers/swal-helper";
 import { RouteNames } from "../../app-routing.module";
 import { BackendApiService } from "../../backend-api.service";
@@ -85,7 +87,8 @@ export class UpdateProfileComponent implements OnInit, OnChanges {
     private titleService: Title,
     public themeService: ThemeService,
     private modalService: BsModalService,
-    private apiInternal: ApiInternalService
+    private apiInternal: ApiInternalService,
+    private tracking: TrackingService
   ) {}
 
   ngOnInit() {
@@ -161,7 +164,7 @@ export class UpdateProfileComponent implements OnInit, OnChanges {
     this.backendApi
       .GetUserGlobalMetadata(
         this.globalVars.localNode,
-        this.globalVars.loggedInUser.PublicKeyBase58Check /*UpdaterPublicKeyBase58Check*/
+        this.globalVars.loggedInUser?.PublicKeyBase58Check /*UpdaterPublicKeyBase58Check*/
       )
       .subscribe(
         (res) => {
@@ -186,7 +189,7 @@ export class UpdateProfileComponent implements OnInit, OnChanges {
     this.backendApi
       .UpdateUserGlobalMetadata(
         this.globalVars.localNode,
-        this.globalVars.loggedInUser.PublicKeyBase58Check /*UpdaterPublicKeyBase58Check*/,
+        this.globalVars.loggedInUser?.PublicKeyBase58Check /*UpdaterPublicKeyBase58Check*/,
         this.emailAddress /*EmailAddress*/,
         null /*MessageReadStateUpdatesByContact*/
       )
@@ -194,7 +197,7 @@ export class UpdateProfileComponent implements OnInit, OnChanges {
         (res) => {},
         (err) => {
           console.log(err);
-          this.globalVars.logEvent("profile : update : error", { err });
+          this.tracking.log("profile : update : error", { err });
         }
       );
   }
@@ -253,7 +256,7 @@ export class UpdateProfileComponent implements OnInit, OnChanges {
     return this.backendApi.UpdateProfile(
       environment.verificationEndpointHostname,
       this.globalVars.localNode,
-      this.globalVars.loggedInUser.PublicKeyBase58Check /*UpdaterPublicKeyBase58Check*/,
+      this.globalVars.loggedInUser?.PublicKeyBase58Check /*UpdaterPublicKeyBase58Check*/,
       "" /*ProfilePublicKeyBase58Check*/,
       // Start params
       this.profileUpdates.usernameUpdate /*NewUsername*/,
@@ -272,7 +275,24 @@ export class UpdateProfileComponent implements OnInit, OnChanges {
   }
 
   _updateProfile() {
-    this._saveProfileUpdates();
+    if (!this.globalVars.loggedInUserDefaultKey) {
+      this.tracking.log("profile : create-messaging-key : start");
+      this.globalVars
+        .launchIdentityMessagingKey()
+        .pipe(first())
+        .subscribe(
+          () => {
+            this.tracking.log("profile : create-messaging-key : success");
+            this._saveProfileUpdates();
+          },
+          (err) => {
+            this.globalVars._alertError(err);
+            this.tracking.log("profile : create-messaging-key : error", err);
+          }
+        );
+    } else {
+      this._saveProfileUpdates();
+    }
   }
 
   _saveProfileUpdates() {
@@ -283,7 +303,7 @@ export class UpdateProfileComponent implements OnInit, OnChanges {
     // TODO: Add errors for emails
     const hasErrors = this._setProfileErrors();
     if (hasErrors) {
-      this.globalVars.logEvent("profile : update : has-errors", this.profileUpdateErrors);
+      this.tracking.log("profile : update : has-errors", this.profileUpdateErrors);
       return;
     }
 
@@ -316,10 +336,13 @@ export class UpdateProfileComponent implements OnInit, OnChanges {
             const userNotifPreferences = this.subscribeToEmailNotifs
               ? SUBSCRIBED_APP_USER_DEFAULTS
               : NEW_APP_USER_DEFAULTS;
+            const utcOffset = getUTCOffset();
             createOrUdpateAppUserObs = this.apiInternal.createAppUser(
               this.loggedInUser.PublicKeyBase58Check,
               this.usernameInput,
               this.globalVars.lastSeenNotificationIdx,
+              utcOffset,
+              20 - utcOffset,
               userNotifPreferences
             );
           }
@@ -331,7 +354,7 @@ export class UpdateProfileComponent implements OnInit, OnChanges {
       .subscribe(
         ([updateProfileResponse]) => {
           this.globalVars.profileUpdateTimestamp = Date.now();
-          this.globalVars.logEvent("profile : update");
+          this.tracking.log("profile : update");
           // TODO: create or update app user record here
           // This updates things like the username that shows up in the dropdown.
           this.globalVars.updateEverything(
@@ -344,7 +367,7 @@ export class UpdateProfileComponent implements OnInit, OnChanges {
         (err) => {
           const parsedError = this.backendApi.parseProfileError(err);
           const lowBalance = parsedError.indexOf("insufficient");
-          this.globalVars.logEvent("profile : update : error", { parsedError, lowBalance });
+          this.tracking.log("profile : update : error", { parsedError, lowBalance });
           this.updateProfileBeingCalled = false;
           SwalHelper.fire({
             target: this.globalVars.getTargetComponentSelector(),
@@ -480,7 +503,7 @@ export class UpdateProfileComponent implements OnInit, OnChanges {
       return;
     }
     return this.backendApi
-      .UploadImage(environment.uploadImageHostname, this.globalVars.loggedInUser.PublicKeyBase58Check, file)
+      .UploadImage(environment.uploadImageHostname, this.globalVars.loggedInUser?.PublicKeyBase58Check, file)
       .toPromise()
       .then((res) => {
         if (fileType === "profile") {
@@ -516,7 +539,7 @@ export class UpdateProfileComponent implements OnInit, OnChanges {
   }
 
   removeExtraDataFields(type: string) {
-    let fieldsToRemove: { [key: string]: null }
+    let fieldsToRemove: { [key: string]: null };
     if (type === "nft") {
       fieldsToRemove = {
         NFTProfilePicturePostHashHex: null,
@@ -531,7 +554,7 @@ export class UpdateProfileComponent implements OnInit, OnChanges {
       .UpdateProfile(
         environment.verificationEndpointHostname,
         this.globalVars.localNode,
-        this.globalVars.loggedInUser.PublicKeyBase58Check,
+        this.globalVars.loggedInUser?.PublicKeyBase58Check,
         "",
         "",
         "",
@@ -540,7 +563,7 @@ export class UpdateProfileComponent implements OnInit, OnChanges {
         1.25 * 100 * 100,
         false,
         this.globalVars.feeRateDeSoPerKB * 1e9 /*MinFeeRateNanosPerKB*/,
-        fieldsToRemove,
+        fieldsToRemove
       )
       .subscribe(() => {
         this.globalVars.updateEverything();

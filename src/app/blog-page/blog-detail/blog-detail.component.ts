@@ -10,6 +10,8 @@ import { BackendApiService, PostEntryResponse, ProfileEntryResponse } from "src/
 import { BlogPostExtraData } from "src/app/create-long-post-page/create-long-post/create-long-post.component";
 import { GlobalVarsService } from "src/app/global-vars.service";
 import { Thread, ThreadManager } from "src/app/post-thread-page/helpers/thread-manager";
+import { TrackingService } from "src/app/tracking.service";
+import { WelcomeModalComponent } from "src/app/welcome-modal/welcome-modal.component";
 import { environment } from "src/environments/environment";
 import { SwalHelper } from "src/lib/helpers/swal-helper";
 import { FollowService } from "src/lib/services/follow/follow.service";
@@ -89,6 +91,7 @@ export class BlogDetailComponent implements OnInit, OnDestroy {
     private transloco: TranslocoService,
     private modalService: BsModalService,
     private followService: FollowService,
+    private tracking: TrackingService,
     public globalVars: GlobalVarsService,
     public location: Location
   ) {
@@ -117,6 +120,12 @@ export class BlogDetailComponent implements OnInit, OnDestroy {
 
   openBuyCreatorCoinModal(event, username: string) {
     event.stopPropagation();
+
+    if (!this.globalVars.loggedInUser) {
+      this.modalService.show(WelcomeModalComponent);
+      return;
+    }
+
     const initialState = { username, tradeType: this.globalVars.RouteNames.BUY_CREATOR };
     this.modalService.show(TradeCreatorModalComponent, {
       class: "modal-dialog-centered buy-deso-modal",
@@ -337,7 +346,7 @@ export class BlogDetailComponent implements OnInit, OnDestroy {
         this.backendApi
           .SubmitPost(
             this.globalVars.localNode,
-            this.globalVars.loggedInUser.PublicKeyBase58Check,
+            this.globalVars.loggedInUser?.PublicKeyBase58Check,
             this.currentPost.PostHashHex /*PostHashHexToModify*/,
             "" /*ParentPostHashHex*/,
             "" /*Title*/,
@@ -353,13 +362,13 @@ export class BlogDetailComponent implements OnInit, OnDestroy {
           )
           .subscribe(
             (response) => {
-              this.globalVars.logEvent("post : hide");
+              this.tracking.log("post : hide");
               this.postDeleted.emit(response.PostEntryResponse);
             },
             (err) => {
               console.error(err);
               const parsedError = this.backendApi.parsePostError(err);
-              this.globalVars.logEvent("post : hide : error", { parsedError });
+              this.tracking.log("post : hide : error", { parsedError });
               this.globalVars._alertError(parsedError);
             }
           );
@@ -383,19 +392,19 @@ export class BlogDetailComponent implements OnInit, OnDestroy {
         this.backendApi
           .BlockPublicKey(
             this.globalVars.localNode,
-            this.globalVars.loggedInUser.PublicKeyBase58Check,
+            this.globalVars.loggedInUser?.PublicKeyBase58Check,
             this.currentPost.PosterPublicKeyBase58Check
           )
           .subscribe(
             () => {
-              this.globalVars.logEvent("user : block");
+              this.tracking.log("user : block");
               this.globalVars.loggedInUser.BlockedPubKeys[this.currentPost.PosterPublicKeyBase58Check] = {};
               this.userBlocked.emit(this.currentPost.PosterPublicKeyBase58Check);
             },
             (err) => {
               console.error(err);
               const parsedError = this.backendApi.stringifyError(err);
-              this.globalVars.logEvent("user : block : error", { parsedError });
+              this.tracking.log("user : block : error", { parsedError });
               this.globalVars._alertError(parsedError);
             }
           );
