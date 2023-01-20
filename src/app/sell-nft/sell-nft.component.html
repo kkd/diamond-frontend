@@ -12,7 +12,7 @@
   <div *ngIf="selectedBidEntries?.length">
     <div class="fs-15px fc-muted mint-nft__section">
       <div class="mint-nft__title">{{ 'sell_nft.sell_an_nft' | transloco }}</div>
-      <span>You are about to sell your NFT to </span>
+      <span>{{ 'sell_nft.about_to_sell' | transloco }}  </span>
       <span class="fc-default" *ngIf="bidEntryUsernames.length === 1">@{{ bidEntryUsernames[0] }}</span>
       <span *ngIf="bidEntryUsernames.length === 2">
         <span class="fc-default">@{{ bidEntryUsernames[0] }}</span>
