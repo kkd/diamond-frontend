@@ -34,6 +34,13 @@ export class AppComponent implements OnInit {
       this.route // route
     );
 
+    // log interaction events emitted by identity
+    window.addEventListener("message", (ev) => {
+      if (!(ev.origin === environment.identityURL && ev.data?.category === "interaction-event")) return;
+      const { object, event, data } = ev.data.payload;
+      this.tracking.log(`identity : ${object} : ${event}`, data);
+    });
+
     // Nuke the referrer so we don't leak anything
     // We also have a meta tag in index.html that does this in a different way to make
     // sure it's nuked.
@@ -307,8 +314,10 @@ export class AppComponent implements OnInit {
       const isLoggedIn = this.backendApi.GetStorage(this.backendApi.LastLoggedInUserKey);
       // If the browser is not supported, display the browser not supported screen.
       if (!res.hasStorageAccess && isLoggedIn) {
+        this.tracking.log("storage-access : request");
         this.globalVars.requestingStorageAccess = true;
         this.identityService.storageGranted.subscribe(() => {
+          this.tracking.log("storage-access : grant");
           this.globalVars.requestingStorageAccess = false;
           this.loadApp();
         });
@@ -322,6 +331,8 @@ export class AppComponent implements OnInit {
   }
 
   loadApp() {
+    this.tracking.log("page : load", { isLoggedIn: !!localStorage.getItem("lastLoggedInUser") });
+
     this.identityService.identityServiceUsers = this.backendApi.GetStorage(this.backendApi.IdentityUsersKey) || {};
     // Filter out invalid public keys
     const publicKeys = Object.keys(this.identityService.identityServiceUsers);
@@ -336,7 +347,6 @@ export class AppComponent implements OnInit {
       if (!_.isEqual(this.globalVars.userList, res.UserList)) {
         this.globalVars.userList = res.UserList || [];
       }
-      this.tracking.log("page : load");
       this.globalVars.updateEverything();
     });
 

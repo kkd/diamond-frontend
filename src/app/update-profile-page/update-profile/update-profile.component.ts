@@ -5,7 +5,7 @@ import * as introJs from "intro.js/intro.js";
 import { isNil } from "lodash";
 import { BsModalService } from "ngx-bootstrap/modal";
 import { forkJoin, Observable, of } from "rxjs";
-import { catchError, first, switchMap } from "rxjs/operators";
+import { catchError, switchMap } from "rxjs/operators";
 import {
   ApiInternalService,
   AppUser,
@@ -14,7 +14,7 @@ import {
 } from "src/app/api-internal.service";
 import { TrackingService } from "src/app/tracking.service";
 import { environment } from "src/environments/environment";
-import { getUTCOffset } from "../../../lib/helpers/date-helpers";
+import { getUTCOffset, localHourToUtcHour } from "../../../lib/helpers/date-helpers";
 import { SwalHelper } from "../../../lib/helpers/swal-helper";
 import { RouteNames } from "../../app-routing.module";
 import { BackendApiService } from "../../backend-api.service";
@@ -194,10 +194,12 @@ export class UpdateProfileComponent implements OnInit, OnChanges {
         null /*MessageReadStateUpdatesByContact*/
       )
       .subscribe(
-        (res) => {},
+        (res) => {
+          this.tracking.log("profile-global-metadata : update");
+        },
         (err) => {
           console.log(err);
-          this.tracking.log("profile : update : error", { err });
+          this.tracking.log("profile-global-metadata : update", { error: err });
         }
       );
   }
@@ -274,25 +276,11 @@ export class UpdateProfileComponent implements OnInit, OnChanges {
     );
   }
 
-  _updateProfile() {
-    if (!this.globalVars.loggedInUserDefaultKey) {
-      this.tracking.log("profile : create-messaging-key : start");
-      this.globalVars
-        .launchIdentityMessagingKey()
-        .pipe(first())
-        .subscribe(
-          () => {
-            this.tracking.log("profile : create-messaging-key : success");
-            this._saveProfileUpdates();
-          },
-          (err) => {
-            this.globalVars._alertError(err);
-            this.tracking.log("profile : create-messaging-key : error", err);
-          }
-        );
-    } else {
-      this._saveProfileUpdates();
-    }
+  updateProfile() {
+    this.tracking.log("update-profile-button : click", {
+      isOnboarding: this.globalVars.userSigningUp,
+    });
+    this._saveProfileUpdates();
   }
 
   _saveProfileUpdates() {
@@ -342,7 +330,7 @@ export class UpdateProfileComponent implements OnInit, OnChanges {
               this.usernameInput,
               this.globalVars.lastSeenNotificationIdx,
               utcOffset,
-              20 - utcOffset,
+              localHourToUtcHour(20),
               userNotifPreferences
             );
           }
@@ -367,7 +355,7 @@ export class UpdateProfileComponent implements OnInit, OnChanges {
         (err) => {
           const parsedError = this.backendApi.parseProfileError(err);
           const lowBalance = parsedError.indexOf("insufficient");
-          this.tracking.log("profile : update : error", { parsedError, lowBalance });
+          this.tracking.log("profile : update", { error: parsedError, lowBalance });
           this.updateProfileBeingCalled = false;
           SwalHelper.fire({
             target: this.globalVars.getTargetComponentSelector(),

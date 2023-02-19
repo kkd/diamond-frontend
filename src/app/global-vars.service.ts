@@ -10,6 +10,7 @@ import { Observable, Observer, of, Subscription } from "rxjs";
 import { catchError, first, share, switchMap } from "rxjs/operators";
 import { TrackingService } from "src/app/tracking.service";
 import Swal from "sweetalert2";
+import { fromWei, Hex, toBN } from "web3-utils";
 import { environment } from "../environments/environment";
 import { parseCleanErrorMsg } from "../lib/helpers/pretty-errors";
 import { SwalHelper } from "../lib/helpers/swal-helper";
@@ -136,6 +137,9 @@ export class GlobalVarsService {
   hotFeedPosts = [];
   tagFeedPosts = [];
   messageResponse = null;
+  messagesLoadedCallback = null;
+  messagesLoadedComponent = null;
+  loadingMessages = false;
   messageMeta = {
     // <public_key || tstamp> -> messageObj
     decryptedMessgesMap: {},
@@ -156,7 +160,8 @@ export class GlobalVarsService {
   // and make everything use sockets.
   updateEverything: any;
 
-  emailRegExp = /(?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*|"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])*")@(?:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|\[(?:(?:(2(5[0-5]|[0-4][0-9])|1[0-9][0-9]|[1-9]?[0-9]))\.){3}(?:(2(5[0-5]|[0-4][0-9])|1[0-9][0-9]|[1-9]?[0-9])|[a-z0-9-]*[a-z0-9]:(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)\])/;
+  emailRegExp =
+    /(?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*|"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])*")@(?:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|\[(?:(?:(2(5[0-5]|[0-4][0-9])|1[0-9][0-9]|[1-9]?[0-9]))\.){3}(?:(2(5[0-5]|[0-4][0-9])|1[0-9][0-9]|[1-9]?[0-9])|[a-z0-9-]*[a-z0-9]:(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)\])/;
 
   latestBitcoinAPIResponse: any;
 
@@ -267,7 +272,8 @@ export class GlobalVarsService {
 
     // Set the filters most recently used and load the messages
     this.SetMessagesFilter(storedTab);
-    this.LoadInitialMessages();
+    // We don't have a great way to wait for the identity iFrame, so we retry this function until it works.
+    this.LoadInitialMessages(0, 10);
   }
 
   pollUnreadNotifications() {
@@ -323,10 +329,11 @@ export class GlobalVarsService {
     }
   }
 
-  LoadInitialMessages() {
+  LoadInitialMessages(retryCount: number, maxRetries) {
     if (!this.loggedInUser) {
       return;
     }
+    this.loadingMessages = true;
 
     return this.backendApi
       .GetMessages(
@@ -352,10 +359,19 @@ export class GlobalVarsService {
 
             // Update the number of new messages so we know when to stop scrolling
             this.newMessagesFromPage = res.OrderedContactsWithMessages.length;
+            if (this.messagesLoadedCallback !== null) {
+              this.messagesLoadedCallback(this.messagesLoadedComponent, res);
+            }
           }
+          this.loadingMessages = false;
         },
         (err) => {
+          console.log("Error getting messages: ", err);
+          if (retryCount < maxRetries) {
+            this.LoadInitialMessages(retryCount + 1, maxRetries);
+          }
           console.error(this.backendApi.stringifyError(err));
+          this.loadingMessages = false;
         }
       );
   }
@@ -424,8 +440,9 @@ export class GlobalVarsService {
       // Store the user in localStorage
       this.backendApi.SetStorage(this.backendApi.LastLoggedInUserKey, user?.PublicKeyBase58Check);
 
-      this.tracking.identityUser(user.PublicKeyBase58Check, {
-        Username: user.ProfileEntryResponse.Username,
+      this.tracking.identifyUser(user?.PublicKeyBase58Check, {
+        username: user?.ProfileEntryResponse?.Username ?? "",
+        isVerified: user?.ProfileEntryResponse?.IsVerified,
       });
 
       // Clear out the message inbox and BitcoinAPI
@@ -498,13 +515,18 @@ export class GlobalVarsService {
 
   getLoggedInUserDefaultKey(): Subscription {
     return this.backendApi.GetDefaultKey(this.localNode, this.loggedInUser.PublicKeyBase58Check).subscribe((res) => {
-      // NOTE: We only trigger the prompt if the user is not in the sign-up flow.
-      if (!res && !(this.userSigningUp || this.router.url === "/sign-up")) {
+      // NOTE: We only trigger the prompt if the user is not in the sign-up
+      // flow. Twitter sync is also excluded because it is part of the sign-up
+      // flow. There is an edge case where a user may have already signed up and
+      // they land directly on the twitter sync page from an external link. In
+      // this case, I think it makes sense to also prevent showing the messaging
+      // key prompt until after the twitter sync flow is complete.
+      if (!res && !(this.userSigningUp || this.router.url === "/sign-up" || this.router.url === "/twitter-sync")) {
         SwalHelper.fire({
-          html:
-            "In order to use the latest messaging features, you need to create a default messaging key. DeSo Identity will now launch to generate this key for you.",
+          html: "In order to use the latest messaging features, you need to create a default messaging key. DeSo Identity will now launch to generate this key for you.",
           showCancelButton: false,
         }).then(({ isConfirmed }) => {
+          this.tracking.log(`default-messaging-key-prompt : ${isConfirmed ? "confirmed" : "cancelled"}`);
           if (isConfirmed) {
             this.launchIdentityMessagingKey();
           }
@@ -547,6 +569,7 @@ export class GlobalVarsService {
 
     // TODO: error handling
     obs$.subscribe((messagingGroupEntryResponse) => {
+      this.tracking.log("default-messaging-key : create");
       if (messagingGroupEntryResponse) {
         this.loggedInUserDefaultKey = messagingGroupEntryResponse;
       }
@@ -571,7 +594,6 @@ export class GlobalVarsService {
     this.backendApi
       .UpdateTutorialStatus(this.localNode, this.loggedInUser.PublicKeyBase58Check, status)
       .subscribe(() => {
-        this.tracking.log(ampEvent);
         this.updateEverything().add(() => {
           this.navigateToCurrentStepInTutorial(this.loggedInUser);
           if (finalStep) {
@@ -738,6 +760,12 @@ export class GlobalVarsService {
       decimal = 4;
     }
     return this.formatUSD(this.nanosToUSDNumber(nanos), decimal);
+  }
+
+  // Used to convert uint256 Hex balances for DAO coins to standard units.
+  hexNanosToStandardUnit(hexNanos: Hex): number {
+    const result = fromWei(toBN(hexNanos), "ether").toString();
+    return parseFloat(result);
   }
 
   isMobile(): boolean {
@@ -983,7 +1011,7 @@ export class GlobalVarsService {
     });
   }
 
-  celebrate(svgList: ConfettiSvg[] = []) {
+  celebrate(svgList: ConfettiSvg[] = [], filePath: string = "/assets/img") {
     const canvasID = "my-canvas-" + this.canvasCount;
     this.canvasCount++;
     this.canvasCount = this.canvasCount % 5;
@@ -998,7 +1026,7 @@ export class GlobalVarsService {
     };
     if (svgList.length > 0) {
       confettiSettings["props"] = svgList.map((svg) => {
-        return { ...{ type: "svg", src: `/assets/img/${svg}.svg` }, ...svgToProps[svg] };
+        return { ...{ type: "svg", src: `${filePath}/${svg}.svg` }, ...svgToProps[svg] };
       });
       confettiSettings.max = 200;
       if (svgList.indexOf(ConfettiSvg.DIAMOND) >= 0) {
@@ -1050,7 +1078,6 @@ export class GlobalVarsService {
   // Helper to launch the get free deso flow in identity.
   launchGetFreeDESOFlow(showPrompt: boolean) {
     if (showPrompt) {
-      this.tracking.log("identity : jumio : prompt");
       SwalHelper.fire({
         target: this.getTargetComponentSelector(),
         title: "",
@@ -1076,19 +1103,17 @@ export class GlobalVarsService {
   }
 
   launchJumioVerification() {
-    this.tracking.log("identity : jumio : launch");
     this.identityService
       .launch("/get-free-deso", {
         public_key: this.loggedInUser?.PublicKeyBase58Check,
         // referralCode: this.referralCode(),
       })
       .subscribe(() => {
-        this.tracking.log("identity : jumio : success");
         this.updateEverything();
       });
   }
 
-  launchIdentityFlow(event: string): Observable<any> {
+  launchIdentityFlow(): Observable<any> {
     let obs$: Observable<any>;
 
     if (
@@ -1098,17 +1123,17 @@ export class GlobalVarsService {
         this.identityInfoResponse.browserSupported
       )
     ) {
+      this.tracking.log("storage-access : request");
       this.requestingStorageAccess = true;
       obs$ = this.identityService.storageGranted.pipe(share());
 
       obs$.subscribe(() => {
+        this.tracking.log("storage-access : grant");
         // TODO: make sure we actually use the status returned from the tap to unlock response.
         this.identityInfoResponse.hasStorageAccess = true;
         this.requestingStorageAccess = false;
       });
     }
-
-    this.tracking.log(`account : ${event} : launch`);
 
     obs$ = obs$
       ? obs$.pipe(
@@ -1126,10 +1151,12 @@ export class GlobalVarsService {
           .pipe(share());
 
     obs$.subscribe((res) => {
-      // TODO: add tracking for whether the user signed up or not.
-      // Q: do we also want to track if the user verified their phone number.
-      this.tracking.log(`account : ${event} : success`);
       this.userSigningUp = res.signedUp;
+      this.tracking.log(`identity : ${res.signedUp ? "signup" : "login"}`, {
+        ...((res.signedUp || typeof res.phoneNumberSuccess !== "undefined") && {
+          phoneNumberSuccess: res.phoneNumberSuccess,
+        }),
+      });
       this.backendApi.setIdentityServiceUsers(res.users, res.publicKeyAdded);
       this.updateEverything().add(() => {
         this.flowRedirect(res.signedUp || res.phoneNumberSuccess);
@@ -1171,22 +1198,15 @@ export class GlobalVarsService {
     }
   }
 
-  launchLoginFlow(): Observable<any> {
+  /**
+   * @param actionTrigger - The object that triggered the login/signup flow.
+   * Should be a string that identifies the UI element that triggered the flow.
+   */
+  launchLoginFlow(actionTrigger: string): Observable<any> {
+    this.tracking.log(`login-flow : start`, { actionTrigger });
     const inAppBrowser = this.checkForInAppBrowser();
     if (!inAppBrowser) {
-      return this.launchIdentityFlow("login");
-    } else {
-      this.modalService.show(DirectToNativeBrowserModalComponent, {
-        class: "modal-dialog-centered buy-deso-modal",
-        initialState: { deviceType: inAppBrowser },
-      });
-    }
-  }
-
-  launchSignupFlow() {
-    const inAppBrowser = this.checkForInAppBrowser();
-    if (!inAppBrowser) {
-      this.launchIdentityFlow("create");
+      return this.launchIdentityFlow();
     } else {
       this.modalService.show(DirectToNativeBrowserModalComponent, {
         class: "modal-dialog-centered buy-deso-modal",
@@ -1202,7 +1222,6 @@ export class GlobalVarsService {
   flowRedirect(signedUp: boolean): void {
     if (signedUp) {
       this.router.navigate(["/" + this.RouteNames.SIGN_UP]);
-      this.userSigningUp = false;
     }
   }
 
@@ -1400,7 +1419,6 @@ export class GlobalVarsService {
           !res.isConfirmed /* if it's not confirmed, skip tutorial*/
         )
         .subscribe((response) => {
-          this.tracking.log(`tutorial : ${res.isConfirmed ? "start" : "skip"}`);
           // Auto update logged in user's tutorial status - we don't need to fetch it via get users stateless right now.
           this.loggedInUser.TutorialStatus = res.isConfirmed ? TutorialStatus.STARTED : TutorialStatus.SKIPPED;
           if (res.isConfirmed) {
@@ -1463,7 +1481,6 @@ export class GlobalVarsService {
       if (res.isConfirmed) {
         this.backendApi.StartOrSkipTutorial(this.localNode, this.loggedInUser?.PublicKeyBase58Check, true).subscribe(
           (response) => {
-            this.tracking.log(`tutorial : skip`);
             // Auto update logged in user's tutorial status - we don't need to fetch it via get users stateless right now.
             this.loggedInUser.TutorialStatus = TutorialStatus.SKIPPED;
             this.router.navigate([RouteNames.BROWSE]);
@@ -1538,6 +1555,10 @@ export class GlobalVarsService {
     } else {
       return `${input}'s`;
     }
+  }
+
+  pluralize(count: number, noun: string, suffix = "s") {
+    return `${noun}${count !== 1 ? suffix : ""}`;
   }
 
   getFreeDESOMessage(): string {

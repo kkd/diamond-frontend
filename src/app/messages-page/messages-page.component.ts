@@ -65,7 +65,7 @@ export class MessagesPageComponent implements OnInit {
     }
     this.selectedThread = thread;
     this.selectedThreadPublicKey = thread.PublicKeyBase58Check;
-    this.selectedThreadProfilePic = "/assets/img/default_profile_pic.png";
+    this.selectedThreadProfilePic = "/assets/img/default-profile-pic.png";
     if (thread.ProfileEntryResponse && thread.ProfileEntryResponse.ProfilePic) {
       this.selectedThreadProfilePic = thread.ProfileEntryResponse.ProfilePic;
     }
@@ -95,12 +95,12 @@ export class MessagesPageComponent implements OnInit {
       .MarkAllMessagesRead(this.globalVars.localNode, this.globalVars.loggedInUser?.PublicKeyBase58Check)
       .subscribe(
         () => {
-          this.tracking.log("user : all-message-read");
+          this.tracking.log("profile : all-message-read");
         },
         (err) => {
           console.log(err);
           const parsedError = this.backendApi.stringifyError(err);
-          this.tracking.log("user : all-message-read : error", { parsedError });
+          this.tracking.log("profile : all-message-read", { error: parsedError });
           this.globalVars._alertError(parsedError);
         }
       );

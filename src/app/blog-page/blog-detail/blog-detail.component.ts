@@ -6,7 +6,15 @@ import { TranslocoService } from "@ngneat/transloco";
 import { BsModalService } from "ngx-bootstrap/modal";
 import { ToastrService } from "ngx-toastr";
 import { Datasource } from "ngx-ui-scroll";
-import { BackendApiService, PostEntryResponse, ProfileEntryResponse } from "src/app/backend-api.service";
+import {
+  AssociationReactionValue,
+  AssociationType,
+  BackendApiService,
+  PostAssociation,
+  PostAssociationCountsResponse,
+  PostEntryResponse,
+  ProfileEntryResponse,
+} from "src/app/backend-api.service";
 import { BlogPostExtraData } from "src/app/create-long-post-page/create-long-post/create-long-post.component";
 import { GlobalVarsService } from "src/app/global-vars.service";
 import { Thread, ThreadManager } from "src/app/post-thread-page/helpers/thread-manager";
@@ -16,6 +24,8 @@ import { environment } from "src/environments/environment";
 import { SwalHelper } from "src/lib/helpers/swal-helper";
 import { FollowService } from "src/lib/services/follow/follow.service";
 import { TradeCreatorModalComponent } from "../../trade-creator-page/trade-creator-modal/trade-creator-modal.component";
+import { forkJoin, of } from "rxjs";
+import { finalize } from "rxjs/operators";
 
 @Component({
   selector: "app-blog-detail",
@@ -35,6 +45,12 @@ export class BlogDetailComponent implements OnInit, OnDestroy {
   isScrollingUp: boolean = false;
   previousPageYOffset = 0;
   boundDetectScrollDirection?: () => void;
+  postReactionCounts: PostAssociationCountsResponse = {
+    Counts: {},
+    Total: 0,
+  };
+  myReactions: Array<PostAssociation> = [];
+  reactionsLoaded: boolean = false;
 
   datasource = new Datasource<Thread>({
     get: (index, count, success) => {
@@ -122,7 +138,7 @@ export class BlogDetailComponent implements OnInit, OnDestroy {
     event.stopPropagation();
 
     if (!this.globalVars.loggedInUser) {
-      this.modalService.show(WelcomeModalComponent);
+      this.modalService.show(WelcomeModalComponent, { initialState: { triggerAction: "cc-buy" } });
       return;
     }
 
@@ -183,6 +199,8 @@ export class BlogDetailComponent implements OnInit, OnDestroy {
         this.isFollowing = this.followService._isLoggedInUserFollowing(
           res.PostFound.ProfileEntryResponse?.PublicKeyBase58Check
         );
+
+        this.getUserReactions();
       });
   }
 
@@ -368,7 +386,7 @@ export class BlogDetailComponent implements OnInit, OnDestroy {
             (err) => {
               console.error(err);
               const parsedError = this.backendApi.parsePostError(err);
-              this.tracking.log("post : hide : error", { parsedError });
+              this.tracking.log("post : hide", { error: parsedError });
               this.globalVars._alertError(parsedError);
             }
           );
@@ -397,14 +415,18 @@ export class BlogDetailComponent implements OnInit, OnDestroy {
           )
           .subscribe(
             () => {
-              this.tracking.log("user : block");
+              this.tracking.log("profile : block", {
+                username: this.currentPost.ProfileEntryResponse.Username,
+                publicKey: this.currentPost.PosterPublicKeyBase58Check,
+                isVerified: this.currentPost.ProfileEntryResponse.IsVerified,
+              });
               this.globalVars.loggedInUser.BlockedPubKeys[this.currentPost.PosterPublicKeyBase58Check] = {};
               this.userBlocked.emit(this.currentPost.PosterPublicKeyBase58Check);
             },
             (err) => {
               console.error(err);
               const parsedError = this.backendApi.stringifyError(err);
-              this.tracking.log("user : block : error", { parsedError });
+              this.tracking.log("profile : block", { error: parsedError });
               this.globalVars._alertError(parsedError);
             }
           );
@@ -482,5 +504,54 @@ export class BlogDetailComponent implements OnInit, OnDestroy {
           this.location.replaceState(this.router.url.split("?")[0]);
         }
       });
+  }
+
+  getUserReactions() {
+    this.reactionsLoaded = false;
+
+    return forkJoin([this.getPostReactionCounts(), this.getMyReactions()])
+      .pipe(
+        finalize(() => {
+          this.reactionsLoaded = true;
+        })
+      )
+      .subscribe(([counts, reactions]) => {
+        this.postReactionCounts = counts;
+        this.myReactions = reactions.Associations;
+      });
+  }
+
+  private getPostReactionCounts() {
+    return this.backendApi.GetPostAssociationsCounts(
+      this.globalVars.localNode,
+      this.currentPost,
+      AssociationType.reaction,
+      Object.values(AssociationReactionValue)
+    );
+  }
+
+  private getMyReactions() {
+    const key = this.globalVars.loggedInUser?.PublicKeyBase58Check;
+
+    if (!key) {
+      // Skip requesting my reactions if user is not logged in
+      return of({ Associations: [] });
+    }
+
+    return this.backendApi.GetPostAssociations(
+      this.globalVars.localNode,
+      this.currentPostHashHex,
+      AssociationType.reaction,
+      this.globalVars.loggedInUser.PublicKeyBase58Check,
+      Object.values(AssociationReactionValue)
+    );
+  }
+
+  updateReactionCounts(counts: PostAssociationCountsResponse) {
+    this.postReactionCounts = counts;
+  }
+
+  updateMyReactions(reactions: Array<PostAssociation>) {
+    this.myReactions = reactions;
   }
 }
